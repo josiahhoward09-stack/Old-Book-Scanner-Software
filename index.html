@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Book Scanner Universal Node Controller V6</title>
+<style>
+:root{
+  --bg:#15171a;--panel:#23272b;--panel2:#1c2024;--line:#46505b;--text:#edf1f5;
+  --muted:#aeb3b8;--ok:#45c86f;--bad:#e05a5a;--accent:#5b8fc9;--event:#d49b58;
+  --number:#79b7ff;--bool:#e879a8;--string:#b2d879;--shadow:0 14px 36px #0009
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);font:14px "Segoe UI",Arial,sans-serif}
+button,input,select,textarea{font:inherit}
+#toolbar{
+  height:56px;background:linear-gradient(180deg,#292e34,#22262a);border-bottom:1px solid #111;
+  display:flex;align-items:center;gap:8px;padding:8px 14px;box-shadow:0 2px 14px #0009;z-index:50;position:relative
+}
+button{
+  border:1px solid #59636d;background:#343a41;color:#f5f7f9;padding:7px 12px;border-radius:6px;
+  cursor:pointer;font-weight:600;transition:background .15s,border-color .15s,transform .1s
+}
+button:hover{background:#46505a;border-color:#77838d}button:active{transform:translateY(1px)}
+#play{background:#285f39;border-color:#3f8c55}
+#stop{background:#6a3030;border-color:#944747}
+#terminalBtn{background:#304b68;border-color:#4f7196}
+#filesBtn{background:#5a4930;border-color:#806847}
+.spacer{flex:1}
+#zoomTools{display:flex;align-items:center;gap:4px;background:#1a1e22;border:1px solid #3c444c;border-radius:7px;padding:3px}
+#zoomTools button{padding:4px 9px;background:transparent;border:0;color:#cbd3da}
+#zoomLabel{min-width:46px;text-align:center;font-size:12px;color:#cbd3da}
+#statusDot{width:11px;height:11px;border-radius:50%;background:var(--bad);box-shadow:0 0 7px #e05a5a88}
+.live #statusDot{background:var(--ok);box-shadow:0 0 7px #45c86f88}
+#statusText{min-width:110px}
+#gpioStatus{font-size:12px;color:var(--muted);white-space:nowrap;max-width:400px;overflow:hidden;text-overflow:ellipsis}
+#gpioStatus.good{color:#73d68e} #gpioStatus.bad{color:#ff7979;font-weight:700}
+
+#workspace{
+  position:absolute;left:0;right:0;top:56px;bottom:0;overflow:hidden;cursor:default;
+  background-color:#202224;
+  background-image:
+    linear-gradient(#ffffff0b 1px,transparent 1px),
+    linear-gradient(90deg,#ffffff0b 1px,transparent 1px),
+    linear-gradient(#ffffff05 1px,transparent 1px),
+    linear-gradient(90deg,#ffffff05 1px,transparent 1px);
+  background-size:100px 100px,100px 100px,20px 20px,20px 20px;
+}
+#workspace.panning{cursor:grabbing}
+#wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+#nodesLayer{position:absolute;inset:0}
+.wire{fill:none;stroke:#88a1bd;stroke-width:3;opacity:.9}
+.wire.event{stroke:var(--event)}
+.wire.number{stroke:var(--number)}
+.wire.boolean{stroke:var(--bool)}
+.wire.string{stroke:var(--string)}
+
+.node{
+  position:absolute;width:230px;background:#303338;border:1px solid #555b63;border-radius:8px;
+  box-shadow:var(--shadow);user-select:none;min-height:90px;transition:box-shadow .15s,border-color .15s
+}
+.node:hover{border-color:#7d8995}.node.selected{outline:2px solid #79aeea;box-shadow:0 0 0 4px #79aeea22,var(--shadow)}
+.node.conflict{outline:2px solid #ef5757}
+.nodeHeader{
+  height:31px;border-radius:7px 7px 0 0;background:#3b4148;padding:7px 9px;font-weight:700;
+  cursor:move;display:flex;align-items:center;gap:6px
+}
+.nodeBody{padding:8px 9px 10px}
+.row{display:flex;align-items:center;gap:7px;margin:6px 0;min-height:23px}
+.row label{width:72px;color:#c8ccd0;font-size:12px}
+.row input,.row select,.row textarea{
+  min-width:0;flex:1;background:#202225;color:#f3f3f3;border:1px solid #555b63;border-radius:4px;padding:4px 6px
+}
+.row textarea{height:54px;resize:vertical}
+.portRow{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:5px}
+.portCol{display:flex;flex-direction:column;gap:6px}
+.portCol.out{align-items:flex-end}
+.portItem{display:flex;align-items:center;gap:6px;font-size:12px;color:#d2d5d8}
+.port{
+  width:12px;height:12px;border-radius:50%;border:2px solid #a8b0b9;background:#222;cursor:pointer;flex:0 0 auto
+}
+.port:hover,.port.armed{box-shadow:0 0 0 4px #76a9df44}
+.port.event{border-color:var(--event)}
+.port.number{border-color:var(--number)}
+.port.boolean{border-color:var(--bool)}
+.port.string{border-color:var(--string)}
+.nodeValue{font-size:12px;color:#8ed99f;margin:4px 0 1px}
+
+#addMenu{
+  position:absolute;display:none;z-index:90;width:265px;background:#282b2f;border:1px solid #666;
+  border-radius:7px;box-shadow:0 12px 35px #000b;padding:8px
+}
+#addMenu input{width:100%;padding:7px;background:#17191b;color:#fff;border:1px solid #555;border-radius:4px;margin-bottom:6px}
+.menuItem{padding:7px 8px;border-radius:4px;cursor:pointer}
+.menuItem:hover{background:#3f454c}
+.menuCategory{font-size:11px;color:#9ca3aa;padding:6px 8px 2px;text-transform:uppercase}
+
+.modal{
+  position:absolute;left:26px;right:26px;top:26px;bottom:26px;display:none;z-index:100;
+  background:#17191b;border:1px solid #646a71;border-radius:8px;box-shadow:0 15px 45px #000c;overflow:hidden
+}
+.modalHeader{
+  height:44px;background:#292c30;border-bottom:1px solid #474c52;padding:8px 10px;
+  display:flex;align-items:center;gap:8px
+}
+.modalHeader .title{font-weight:700}
+.modalHeader .small{font-size:12px;color:#aaa}
+.modalHeader .right{margin-left:auto}
+#terminalOutput{
+  position:absolute;left:10px;right:10px;top:54px;bottom:54px;background:#0b0d0e;border:1px solid #35393e;
+  border-radius:5px;margin:0;padding:10px;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  font:14px/1.35 "Ubuntu Mono","DejaVu Sans Mono",monospace;color:#e7e7e7
+}
+#terminalInputRow{position:absolute;left:10px;right:10px;bottom:10px;height:36px;display:flex;gap:7px}
+#terminalInput{flex:1;background:#0b0d0e;color:#fff;border:1px solid #555;border-radius:4px;padding:7px;font-family:monospace}
+
+#filePath{min-width:470px;background:#17191b;color:#fff;border:1px solid #555;border-radius:4px;padding:6px}
+#fileEditor{
+  position:absolute;left:10px;right:10px;top:54px;bottom:10px;width:calc(100% - 20px);
+  resize:none;background:#0c0e10;color:#e8e8e8;border:1px solid #3d4248;border-radius:5px;padding:10px;
+  font:13px/1.35 "Ubuntu Mono","DejaVu Sans Mono",monospace
+}
+#toast{
+  position:absolute;z-index:200;left:50%;bottom:20px;transform:translateX(-50%);
+  background:#333;border:1px solid #666;border-radius:5px;padding:9px 14px;display:none;box-shadow:0 7px 25px #0009
+}
+#cameraPreview{
+  position:absolute;right:18px;bottom:18px;width:520px;height:350px;display:none;z-index:80;
+  background:#050505;border:1px solid #666;border-radius:7px;overflow:hidden;box-shadow:0 12px 30px #000b
+}
+#cameraPreview img{width:100%;height:100%;object-fit:contain}
+#cameraPreview button{position:absolute;right:5px;top:5px;padding:3px 8px}
+#cameraMessage{position:absolute;left:10px;bottom:10px;right:10px;background:#17191bdd;padding:6px;border-radius:4px;font-size:12px}
+#galleryPanel{position:absolute;left:26px;right:26px;top:26px;bottom:26px;display:none;z-index:110;background:#17191b;border:1px solid #646a71;border-radius:8px;box-shadow:0 15px 45px #000c;overflow:auto;padding:18px}
+#galleryHeader{display:flex;align-items:center;gap:10px;margin-bottom:14px;position:sticky;top:0;background:#17191b;padding-bottom:12px;z-index:1}
+#galleryHeader h2{font-size:16px;margin:0}.galleryGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.galleryItem{background:#24282d;border:1px solid #424a53;border-radius:7px;overflow:hidden}.galleryItem img{display:block;width:100%;height:160px;object-fit:contain;background:#08090a}.galleryItem div{padding:8px;font-size:11px;color:#bfc7cf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hint{font-size:12px;color:#aaa}
+</style>
+<link rel="stylesheet" href="/studio.css">
+<script src="/timelapse-ui.js" defer></script>
+</head>
+<body>
+<div id="toolbar">
+  <div class="topbar"><div class="brand"><span class="brandIcon">▣</span><div>Book Scanner <small>CAPTURE STUDIO</small></div></div>
+    <div class="connection"><div id="statusDot"></div><span id="statusText">Connecting…</span><button id="linkBtn" title="Reconnect to Pi">↻</button></div>
+    <div class="spacer"></div><button id="timelapseBtn">◷ Timelapse</button><button id="galleryBtn" class="primary">▧ Camera Gallery</button><button id="terminalBtn">Terminal</button><button id="filesBtn">Files</button>
+  </div>
+  <div class="editorbar"><button id="addNodeBtn">＋ Add node</button><button id="saveBtn">Save graph</button><button id="loadBtn">Load</button><button id="deleteBtn">Delete node</button>
+    <div class="spacer"></div><div id="zoomTools"><button id="zoomOut" aria-label="Zoom out">−</button><span id="zoomLabel">100%</span><button id="zoomIn" aria-label="Zoom in">+</button><button id="zoomReset">Fit</button></div>
+    <button id="stop">■ Stop</button><button id="play">▶ Run</button>
+  </div>
+</div>
+
+<div id="workspace">
+  <svg id="wires"></svg>
+  <div id="nodesLayer"></div>
+
+  <div id="addMenu">
+    <input id="addSearch" placeholder="Search nodes…">
+    <div id="addItems"></div>
+  </div>
+
+  <div id="terminalPanel" class="modal">
+    <div class="modalHeader">
+      <span class="title">Pi 5 Terminal</span>
+      <span class="small">copycatbrain@10.42.0.2 — dedicated Ethernet only</span>
+      <button id="termReconnect">Reconnect</button>
+      <button class="right" id="termClose">Close</button>
+    </div>
+    <pre id="terminalOutput"></pre>
+    <div id="terminalInputRow">
+      <input id="terminalInput" autocomplete="off" spellcheck="false" placeholder="Type a command and press Enter">
+      <button id="termSend">Send</button>
+      <button id="termCtrlC">Ctrl+C</button>
+    </div>
+  </div>
+
+  <div id="filePanel" class="modal">
+    <div class="modalHeader">
+      <span class="title">Pi File Editor</span>
+      <input id="filePath" value="/home/copycatbrain/universal-nodes/index.html">
+      <button id="fileLoad">Load</button>
+      <button id="fileSave">Save</button>
+      <button class="right" id="fileClose">Close</button>
+    </div>
+    <textarea id="fileEditor" spellcheck="false"></textarea>
+  </div>
+
+  <div id="cameraPreview"><button id="camClose">×</button><img id="camImage" alt="Camera preview"><div id="cameraMessage" role="status"></div></div>
+  <div id="galleryPanel"><div id="galleryHeader"><div><span class="eyebrow">YOUR SCANS</span><h2>Camera Gallery</h2><p id="galleryCount">Click a photo to explore the details.</p></div><div class="spacer"></div><button id="galleryTrash">Trash</button><button id="galleryRefresh">↻ Refresh</button><button id="galleryClose">Back to editor</button></div><div id="galleryGrid" class="galleryGrid"></div></div>
+  <div id="captureNotice" role="status" aria-live="polite" hidden></div>
+  <div id="toast"></div>
+</div>
+<footer id="activityBar"><span id="runState">● Running</span><span id="activitySummary">Waiting for events</span><span class="spacer"></span><span id="gpioStatusFooter"></span><span class="hint">Shift+A add · drag background to pan · wheel zoom</span><span id="gpioStatus" hidden></span></footer>
+<dialog id="photoViewer" aria-labelledby="photoTitle"><div class="viewerToolbar"><div><span class="eyebrow">PHOTO INSPECTOR</span><h2 id="photoTitle">Photo</h2><span id="photoInfo">Loading…</span></div><div class="spacer"></div><button id="photoPrev" aria-label="Previous photo">←</button><button id="photoNext" aria-label="Next photo">→</button><a id="photoDownload" class="button" download>Download</a><button id="photoClose" aria-label="Close photo viewer">✕</button></div><div id="photoStage"><img id="photoFull" alt="Selected camera photograph" draggable="false"></div><div class="viewerFooter"><span>Scroll to zoom · drag to move · double-click to fit</span><div class="spacer"></div><button id="photoMinus" aria-label="Zoom photo out">−</button><span id="photoZoom">100%</span><button id="photoPlus" aria-label="Zoom photo in">+</button><button id="photoFit">Fit</button><button id="photoActual">1:1</button></div></dialog>
+<script src="/studio.js"></script>
+<dialog id="timelapsePanel" aria-labelledby="tlTitle">
+  <header><div><span class="eyebrow">MAKE TIME VISIBLE</span><h2 id="tlTitle">Timelapse studio</h2></div><button id="tlClose" aria-label="Close timelapse">✕</button></header>
+  <p>Record your work on the Pi—even after closing this page. Each selected camera gets its own MP4.</p>
+  <form id="tlForm"><fieldset id="tlSettings"><div class="tlFields">
+    <label>Cameras<select id="tlCameras"><option value="0">Camera 1</option><option value="1">Camera 2</option><option value="both">Both cameras</option></select></label>
+    <label>Photo interval (seconds)<input id="tlInterval" type="number" min="1" max="3600" step="0.1" value="10" required></label>
+    <label>Record for (minutes)<input id="tlDuration" type="number" min="0.05" max="1440" step="0.05" value="60" required></label>
+    <label>Photo resolution<select id="tlResolution"><option value="1920x1080">1080p · less storage</option><option value="3840x2160">4K · detailed</option><option value="9248x6944">64 MP · full-size originals</option></select></label>
+    <label>Autofocus<select id="tlFocus"><option value="once">Focus once, then hold</option><option value="every">Refocus before every photo</option><option value="off">Off · keep current lens position</option></select></label>
+    <label>Video playback FPS<input id="tlFps" type="number" min="1" max="60" step="1" value="30" required></label>
+  </div></fieldset><p id="tlEstimate"></p>
+  <p class="tlHelp">Both cameras record concurrently, not hardware-synchronized. Slow exposures/focusing can skip intervals. Videos are capped at 4K; original photos are retained. Keep the Pi powered on. Autofocus off does not guarantee a sharp picture.</p>
+  <div class="tlActions"><button id="tlStart" type="submit" class="primary">● Start timelapse</button><button id="tlStop" type="button" disabled>■ Stop &amp; build video</button></div></form>
+  <p id="tlStatus" role="status" aria-live="polite">Checking recorder…</p>
+  <h3>Your recordings</h3><div id="tlJobs"></div>
+</dialog>
+
+<script>
+"use strict";
+
+const API = {
+  async get(path){
+    const r=await fetch(path,{cache:"no-store"});
+    let d={}; try{d=await r.json()}catch(e){}
+    if(!r.ok) throw new Error(d.error||`HTTP ${r.status}`);
+    return d;
+  },
+  async post(path,data){
+    const r=await fetch(path,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(data)
+    });
+    let d={}; try{d=await r.json()}catch(e){}
+    if(!r.ok) throw new Error(d.error||`HTTP ${r.status}`);
+    return d;
+  }
+};
+
+let linked=false, running=true, selectedNode=null, armedOutput=null;
+let mousePos={x:200,y:120}, nextId=1;
+let nodes=[], links=[];
+const values=new Map();
+const runtime=new Map();
+
+const workspace=document.getElementById("workspace");
+const nodesLayer=document.getElementById("nodesLayer");
+const wires=document.getElementById("wires");
+
+function toast(msg){
+  const e=document.getElementById("toast");
+  e.textContent=msg;e.style.display="block";
+  clearTimeout(e._t);e._t=setTimeout(()=>e.style.display="none",2300);
+}
+function nodeById(id){return nodes.find(n=>n.id===id)}
+function valKey(n,p){return `${n}:${p}`}
+function setValue(n,p,v){values.set(valKey(n,p),v)}
+function getValue(n,p){return values.get(valKey(n,p))}
+function incoming(nodeId,port){
+  const l=links.find(x=>x.toNode===nodeId&&x.toPort===port);
+  return l?getValue(l.fromNode,l.fromPort):undefined;
+}
+function outgoing(nodeId,port){
+  return links.filter(x=>x.fromNode===nodeId&&x.fromPort===port);
+}
+
+const defs = {
+  start:{category:"Flow",title:"Start Sequence",color:"#354552",inputs:[],outputs:[["Trigger","event"]],props:{}},
+  delay:{category:"Flow",title:"Delay",color:"#344a3c",inputs:[["Trigger","event"]],outputs:[["Next","event"]],props:{ms:1000}},
+  number:{category:"Values",title:"Number",color:"#36543c",inputs:[],outputs:[["Value","number"]],props:{value:80}},
+  boolean:{category:"Values",title:"Boolean",color:"#5c3948",inputs:[],outputs:[["Value","boolean"]],props:{value:true}},
+  ds18b20:{category:"Sensors",title:"DS18B20 Temperature",color:"#2d6e50",inputs:[],outputs:[["°F","number"],["°C","number"],["Updated","event"]],props:{gp:26,pollMs:1000},gpio:true},
+  gpioIn:{category:"GPIO",title:"GPIO Digital Input",color:"#356d63",inputs:[],outputs:[["Value","number"],["Changed","event"]],props:{gp:22,pull:"NONE",pollMs:200},gpio:true},
+  gpioOut:{category:"GPIO",title:"GPIO Digital Output",color:"#355a7d",inputs:[["Trigger","event"],["Value","number"]],outputs:[["Next","event"]],props:{gp:20,state:1},gpio:true},
+  pwm:{category:"GPIO",title:"GPIO PWM Output",color:"#54346f",inputs:[["Trigger","event"],["Duty %","number"]],outputs:[["Next","event"]],props:{gp:18,duty:50,freq:1000},gpio:true},
+  compare:{category:"Logic",title:"If / Compare",color:"#6d4a3b",inputs:[["A","number"],["B","number"]],outputs:[["Result","boolean"],["True","event"],["False","event"]],props:{op:">="}},
+  and:{category:"Logic",title:"AND",color:"#5a3c65",inputs:[["A","boolean"],["B","boolean"]],outputs:[["Result","boolean"]],props:{}},
+  or:{category:"Logic",title:"OR",color:"#5a3c65",inputs:[["A","boolean"],["B","boolean"]],outputs:[["Result","boolean"]],props:{}},
+  not:{category:"Logic",title:"NOT",color:"#5a3c65",inputs:[["Input","boolean"]],outputs:[["Result","boolean"]],props:{}},
+  camera:{category:"Camera",title:"OwlSight Camera",color:"#355a7d",inputs:[["Trigger","event"]],outputs:[["Next","event"],["Image URL","string"]],props:{camera:0,mode:"Take Picture",resolution:"9248x6944"}},
+  monitor:{category:"Flow",title:"Always-On Monitor",color:"#76542c",inputs:[],outputs:[["Heartbeat","event"]],props:{pollMs:1000}},
+  api:{category:"Pi",title:"Pi API Action",color:"#55504a",inputs:[["Trigger","event"]],outputs:[["Next","event"],["Response","string"]],props:{endpoint:"/api/status",method:"GET",body:"{}"}}
+};
+
+function deepProps(p){return JSON.parse(JSON.stringify(p))}
+function addNode(type,x=mousePos.x,y=mousePos.y,existing=null){
+  const d=defs[type]; if(!d)return;
+  const n=existing||{id:nextId++,type,x,y,props:deepProps(d.props)};
+  n.props={...deepProps(d.props),...n.props};
+  nextId=Math.max(nextId,n.id+1);
+  nodes.push(n);
+  renderNode(n);
+  validatePins();
+  drawWires();
+  return n;
+}
+
+function propRow(label,el){
+  const r=document.createElement("div");r.className="row";
+  const l=document.createElement("label");l.textContent=label;
+  r.append(l,el);return r;
+}
+function inputEl(type,value,onchange,opts={}){
+  let e;
+  if(type==="select"){
+    e=document.createElement("select");
+    for(const v of opts.values||[]){const o=document.createElement("option");o.value=v;o.textContent=v;e.appendChild(o)}
+    e.value=value;
+  }else if(type==="textarea"){
+    e=document.createElement("textarea");e.value=value;
+  }else{
+    e=document.createElement("input");e.type=type;e.value=value;
+  }
+  e.addEventListener("change",()=>onchange(type==="number"?Number(e.value):type==="checkbox"?e.checked:e.value));
+  return e;
+}
+function addPropControls(n,body){
+  const p=n.props;
+  const num=(label,key,min=null)=>{
+    const e=inputEl("number",p[key],v=>{p[key]=v;validatePins()});
+    if(min!==null)e.min=min; body.appendChild(propRow(label,e));
+  };
+  const text=(label,key)=>body.appendChild(propRow(label,inputEl("text",p[key],v=>p[key]=v)));
+  const select=(label,key,vals)=>body.appendChild(propRow(label,inputEl("select",p[key],v=>p[key]=v,{values:vals})));
+  const area=(label,key)=>body.appendChild(propRow(label,inputEl("textarea",p[key],v=>p[key]=v)));
+
+  switch(n.type){
+    case "monitor":num("Every ms","pollMs",100);break;
+    case "delay": num("Wait ms","ms",0);break;
+    case "number": num("Value","value");break;
+    case "boolean":{
+      const e=document.createElement("select");
+      ["true","false"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;e.appendChild(o)});
+      e.value=String(p.value);e.onchange=()=>p.value=e.value==="true";body.appendChild(propRow("Value",e));break;
+    }
+    case "ds18b20":num("GPIO","gp",0);num("Poll ms","pollMs",100);break;
+    case "gpioIn":num("GPIO","gp",0);select("Pull","pull",["NONE","UP","DOWN"]);num("Poll ms","pollMs",50);break;
+    case "gpioOut":num("GPIO","gp",0);select("Default","state",["1","0"]);p.state=Number(p.state);break;
+    case "pwm":num("GPIO","gp",0);num("Duty %","duty",0);num("Frequency","freq",1);break;
+    case "compare":select("Operator","op",[">=",">","<=","<","==","!="]);break;
+    case "camera":{
+      const cameraSelect=document.createElement("select");cameraSelect.setAttribute("aria-label","Capture cameras");
+      for(const [value,label] of [["0","Camera 1"],["1","Camera 2"],["both","Both cameras"]]){const option=document.createElement("option");option.value=value;option.textContent=label;cameraSelect.appendChild(option)}
+      cameraSelect.value=String(p.camera??0);cameraSelect.onchange=()=>{p.camera=cameraSelect.value;ready.dataset.cameraReady=p.camera;refreshCameraReadiness()};body.appendChild(propRow("Camera",cameraSelect));
+      select("Mode","mode",["Take Picture","Live Feed"]);
+      const resolution=document.createElement("select");resolution.setAttribute("aria-label","Photo resolution");
+      for(const [value,label] of Object.entries(photoSizes)){const o=document.createElement("option");o.value=value;o.textContent=label;resolution.appendChild(o)}
+      resolution.value=p.resolution;body.appendChild(propRow("Resolution",resolution));
+      const help=document.createElement("p");help.className="cameraHelp";
+      const updateHelp=()=>help.textContent=p.resolution==="instant"?"Preview snapshot • focus is not checked":"Fast scanning holds focus • refocus after changing camera/book height";
+      resolution.onchange=()=>{p.resolution=resolution.value;updateHelp()};updateHelp();body.appendChild(help);
+      const focus=document.createElement("select");focus.setAttribute("aria-label","Camera focus mode");focus.className="focusControl";
+      for(const [value,label] of [["hold","Fast scanning · focus once"],["continuous","Continuous · refocus as needed"]]){const option=document.createElement("option");option.value=value;option.textContent=label;focus.appendChild(option)}
+      focus.value=p.focusMode||"hold";body.appendChild(propRow("Focus",focus));
+      focus.onchange=async()=>{const previous=p.focusMode||"hold";try{await focusCameras(p.camera,{focus_mode:focus.value});p.focusMode=focus.value;refreshCameraReadiness()}catch(e){focus.value=previous;toast(e.message)}};
+      const refocus=document.createElement("button");refocus.className="focusControl";refocus.textContent="⌖ Refocus & hold";
+      refocus.onclick=async()=>{try{await focusCameras(p.camera,{focus_mode:"hold",refocus:true});p.focusMode="hold";focus.value="hold";toast("Refocusing selected cameras");refreshCameraReadiness()}catch(e){toast(e.message)}};body.appendChild(refocus);
+      const ready=document.createElement("p");ready.className="cameraHelp";ready.dataset.cameraReady=String(p.camera??0);ready.textContent="Checking cameras…";body.appendChild(ready);
+      const take=document.createElement("button");take.className="captureButton";take.dataset.capture=n.id;take.textContent="◎ Take Picture";take.onclick=()=>captureCamera(n).catch(()=>{});body.appendChild(take);
+      const live=document.createElement("button");live.textContent="Open Live Feed";live.onclick=()=>showCamera(p.camera);body.appendChild(propRow("Preview",live));
+      const recover=document.createElement("button");recover.textContent="↻ Reconnect cameras";recover.onclick=async()=>{if(capturePending){toast("Wait for queued photos to finish");return}try{await API.post("/api/camera/restart",{});toast("Restarting cameras · allow a few seconds")}catch(e){toast(e.message)}};body.appendChild(recover);
+      break;
+    }
+    case "api":text("Endpoint","endpoint");select("Method","method",["GET","POST"]);area("JSON","body");break;
+  }
+}
+
+function renderNode(n){
+  const d=defs[n.type];
+  const el=document.createElement("div");
+  el.className="node";el.dataset.id=n.id;el.style.left=n.x+"px";el.style.top=n.y+"px";
+  const h=document.createElement("div");h.className="nodeHeader";h.style.background=d.color;h.textContent=d.title;
+  const b=document.createElement("div");b.className="nodeBody";
+  const v=document.createElement("div");v.className="nodeValue";v.id=`nodeval-${n.id}`;
+  b.appendChild(v);
+  const activity=document.createElement("div");activity.className="nodeActivity";activity.id=`activity-${n.id}`;activity.textContent="Ready";b.appendChild(activity);
+  addPropControls(n,b);
+
+  const ports=document.createElement("div");ports.className="portRow";
+  const left=document.createElement("div");left.className="portCol in";
+  const right=document.createElement("div");right.className="portCol out";
+
+  for(const [name,type] of d.inputs){
+    const item=document.createElement("div");item.className="portItem";
+    const pt=document.createElement("span");pt.className=`port ${type}`;pt.dataset.node=n.id;pt.dataset.port=name;pt.dataset.dir="in";pt.dataset.type=type;
+    const tx=document.createElement("span");tx.textContent=name;item.append(pt,tx);left.appendChild(item);
+    pt.addEventListener("click",e=>{e.stopPropagation();handlePortClick(pt)});
+  }
+  for(const [name,type] of d.outputs){
+    const item=document.createElement("div");item.className="portItem";
+    const tx=document.createElement("span");tx.textContent=name;
+    const pt=document.createElement("span");pt.className=`port ${type}`;pt.dataset.node=n.id;pt.dataset.port=name;pt.dataset.dir="out";pt.dataset.type=type;
+    item.append(tx,pt);right.appendChild(item);
+    pt.addEventListener("click",e=>{e.stopPropagation();handlePortClick(pt)});
+  }
+  ports.append(left,right);b.appendChild(ports);el.append(h,b);nodesLayer.appendChild(el);
+
+  el.addEventListener("mousedown",()=>selectNode(n.id));
+  let drag=null;
+  h.addEventListener("pointerdown",e=>{
+    if(e.button!==0)return;
+    e.preventDefault();selectNode(n.id);h.setPointerCapture(e.pointerId);
+    drag={sx:e.clientX,sy:e.clientY,ox:n.x,oy:n.y};
+  });
+  h.addEventListener("pointermove",e=>{
+    if(!drag)return;
+    n.x=Math.round((drag.ox+(e.clientX-drag.sx)/zoom)/10)*10;
+    n.y=Math.round((drag.oy+(e.clientY-drag.sy)/zoom)/10)*10;
+    el.style.left=n.x+"px";el.style.top=n.y+"px";drawWires();
+  });
+  h.addEventListener("pointerup",()=>drag=null);
+}
+function rerender(){
+  nodesLayer.innerHTML="";
+  for(const n of nodes)renderNode(n);
+  selectNode(selectedNode);
+  drawWires();validatePins();
+}
+function selectNode(id){
+  selectedNode=id;
+  document.querySelectorAll(".node").forEach(e=>e.classList.toggle("selected",Number(e.dataset.id)===id));
+}
+function portElement(nodeId,port,dir){
+  return document.querySelector(`.port[data-node="${nodeId}"][data-port="${CSS.escape(port)}"][data-dir="${dir}"]`);
+}
+function handlePortClick(pt){
+  const node=Number(pt.dataset.node), port=pt.dataset.port, dir=pt.dataset.dir, type=pt.dataset.type;
+  if(dir==="out"){
+    document.querySelectorAll(".port.armed").forEach(x=>x.classList.remove("armed"));
+    armedOutput={node,port,type};pt.classList.add("armed");toast(`Select an input for ${port}`);
+    return;
+  }
+  if(!armedOutput)return;
+  if(type!==armedOutput.type && type!=="*" && armedOutput.type!=="*"){toast(`Port types do not match (${armedOutput.type} → ${type})`);return}
+  links=links.filter(l=>!(l.toNode===node&&l.toPort===port));
+  links.push({fromNode:armedOutput.node,fromPort:armedOutput.port,toNode:node,toPort:port,type});
+  document.querySelectorAll(".port.armed").forEach(x=>x.classList.remove("armed"));
+  armedOutput=null;drawWires();
+}
+function centerOf(pt){
+  const wr=workspace.getBoundingClientRect(),r=pt.getBoundingClientRect();
+  return {x:r.left-wr.left+r.width/2,y:r.top-wr.top+r.height/2}
+}
+function drawWires(){
+  wires.innerHTML="";
+  for(const l of links){
+    const a=portElement(l.fromNode,l.fromPort,"out"),b=portElement(l.toNode,l.toPort,"in");
+    if(!a||!b)continue;
+    const p1=centerOf(a),p2=centerOf(b),dx=Math.max(55,Math.abs(p2.x-p1.x)*.45);
+    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d",`M ${p1.x} ${p1.y} C ${p1.x+dx} ${p1.y}, ${p2.x-dx} ${p2.y}, ${p2.x} ${p2.y}`);
+    path.setAttribute("class",`wire ${l.type||""} ${(firingLinks.get(JSON.stringify(l))||0)>Date.now()?"firing":""}`);wires.appendChild(path);
+  }
+}
+
+function validatePins(){
+  const used=new Map(),errors=[];
+  document.querySelectorAll(".node").forEach(e=>e.classList.remove("conflict"));
+  for(const n of nodes){
+    if(!defs[n.type].gpio)continue;
+    const gp=Number(n.props.gp);
+    if(!Number.isInteger(gp)||gp<0||gp>28){errors.push(`${defs[n.type].title}: invalid GP${gp}`);markConflict(n.id);continue}
+    if(!used.has(gp))used.set(gp,[]);
+    used.get(gp).push(n);
+  }
+  for(const [gp,arr] of used){
+    if(arr.length>1){errors.push(`GP${gp}: ${arr.map(n=>defs[n.type].title).join(", ")}`);arr.forEach(n=>markConflict(n.id))}
+  }
+  const e=document.getElementById("gpioStatus");
+  if(errors.length){e.className="bad";e.textContent="GPIO CONFLICT — "+errors.join(" | ");return false}
+  e.className="good";e.textContent="GPIO assignments OK";return true;
+}
+function markConflict(id){const e=document.querySelector(`.node[data-id="${id}"]`);if(e)e.classList.add("conflict")}
+
+async function linkPi(){
+  try{
+    const s=await API.get("/api/status");linked=true;document.getElementById("toolbar").classList.add("live");
+    document.getElementById("statusText").textContent=s.pico_connected?"Pi + Pico Live":"Pi Live / Pico Missing";
+    toast("Connected to Pi 5");
+  }catch(e){
+    linked=false;document.getElementById("toolbar").classList.remove("live");
+    document.getElementById("statusText").textContent="Simulation Mode";toast("Pi API unavailable");
+  }
+}
+
+function nodeRuntime(id){
+  if(!runtime.has(id))runtime.set(id,{});
+  return runtime.get(id);
+}
+async function pollNodes(){
+  if(!running)return;
+  const epoch=graphEpoch;
+  for(const n of [...nodes]){
+    const r=nodeRuntime(n.id),now=Date.now();
+    if(n.type==="monitor" && (!r.last||now-r.last>=Math.max(100,Number(n.props.pollMs)||1000))){
+      r.last=now;fireEvent(n.id,"Heartbeat");
+    }
+    if(n.type==="number")setValue(n.id,"Value",Number(n.props.value));
+    if(n.type==="boolean")setValue(n.id,"Value",Boolean(n.props.value));
+    if(["ds18b20","gpioIn"].includes(n.type)&&linked&&!r.busy&&(!r.last||now-r.last>=Math.max(100,Number(n.props.pollMs)||1000))){
+      r.busy=true;r.last=now;activity(n.id,"active","Reading sensor…");
+      const path=n.type==="ds18b20"?`/api/sensor/ds18b20?gp=${encodeURIComponent(n.props.gp)}`:`/api/gpio/read?gp=${encodeURIComponent(n.props.gp)}&pull=${encodeURIComponent(n.props.pull)}`;
+      API.get(path).then(d=>{
+        if(epoch!==graphEpoch||!nodeById(n.id))return;
+        const v=document.getElementById(`nodeval-${n.id}`);
+        if(n.type==="ds18b20"){
+          setValue(n.id,"°F",Number(d.fahrenheit));setValue(n.id,"°C",Number(d.celsius));
+          if(v)v.textContent=`${Number(d.fahrenheit).toFixed(1)} °F / ${Number(d.celsius).toFixed(1)} °C`;
+          activity(n.id,"done","Reading updated");fireEvent(n.id,"Updated");
+        }else{
+          const old=getValue(n.id,"Value"),nv=Number(d.value);setValue(n.id,"Value",nv);
+          if(v)v.textContent=`GP${n.props.gp} = ${nv}`;
+          activity(n.id,"done","Reading updated");
+          if(old!==undefined&&old!==nv)fireEvent(n.id,"Changed");
+        }
+      }).catch(e=>{if(epoch===graphEpoch)activity(n.id,"error",e.message)}).finally(()=>r.busy=false);
+    }
+    if(n.type==="compare"){
+      const av=incoming(n.id,"A"),bv=incoming(n.id,"B");
+      if(av===undefined||bv===undefined)continue;
+      const a=Number(av),b=Number(bv);let z=false;
+      switch(n.props.op){case">=":z=a>=b;break;case">":z=a>b;break;case"<=":z=a<=b;break;case"<":z=a<b;break;case"==":z=a==b;break;case"!=":z=a!=b;break}
+      setValue(n.id,"Result",z);
+      if(r.lastCompare!==z){activity(n.id,"done",`${a} ${n.props.op} ${b} → ${z}`);fireEvent(n.id,z?"True":"False")}
+      r.lastCompare=z;
+    }
+    if(n.type==="and")setValue(n.id,"Result",Boolean(incoming(n.id,"A"))&&Boolean(incoming(n.id,"B")));
+    if(n.type==="or")setValue(n.id,"Result",Boolean(incoming(n.id,"A"))||Boolean(incoming(n.id,"B")));
+    if(n.type==="not")setValue(n.id,"Result",!Boolean(incoming(n.id,"Input")));
+  }
+}
+function fireEvent(nodeId,outPort){
+  if(!running||!nodeById(nodeId))return;
+  const epoch=graphEpoch;
+  if(nodeById(nodeId).type!=="camera")pulseNode(nodeId,"Sent "+outPort);
+  for(const l of outgoing(nodeId,outPort)){
+    firingLinks.set(JSON.stringify(l),Date.now()+650);
+    setTimeout(()=>{if(epoch===graphEpoch)handleEvent(l.toNode,l.toPort)},16);
+  }
+  drawWires();
+}
+async function handleEvent(nodeId,inputPort){
+  if(!running)return;
+  const n=nodeById(nodeId);if(!n)return;
+  const r=nodeRuntime(nodeId),epoch=graphEpoch;
+  if(r.eventBusy)return;
+  r.eventBusy=true;activity(n.id,"active","Running…");
+  try{
+    if(n.type==="delay"){
+      const ms=Math.max(0,Number(n.props.ms)||0);activity(n.id,"active",`Waiting ${ms} ms…`);
+      await new Promise(resolve=>setTimeout(resolve,ms));
+    }else if(n.type==="gpioOut"){
+      const iv=incoming(n.id,"Value"),value=iv===undefined?Number(n.props.state):Number(iv)?1:0;
+      if(linked)await API.post("/api/gpio/write",{gp:Number(n.props.gp),value});
+    }else if(n.type==="pwm"){
+      const iv=incoming(n.id,"Duty %"),duty=iv===undefined?Number(n.props.duty):Number(iv);
+      if(linked)await API.post("/api/gpio/pwm",{gp:Number(n.props.gp),duty,freq:Number(n.props.freq)});
+    }else if(n.type==="camera"){
+      if(n.props.mode==="Live Feed")showCamera(n.props.camera);
+      else await captureCamera(n);
+    }else if(n.type==="api"){
+      let d;
+      if(linked){
+        if(n.props.method==="GET")d=await API.get(n.props.endpoint);
+        else d=await API.post(n.props.endpoint,JSON.parse(n.props.body||"{}"));
+        setValue(n.id,"Response",JSON.stringify(d));
+      }
+    }
+    if(epoch===graphEpoch&&nodeById(n.id)){
+      if(n.type!=="camera")activity(n.id,"done","Completed");
+      fireEvent(n.id,"Next");
+    }
+  }catch(e){activity(n.id,"error",e.message);toast(`${defs[n.type].title}: ${e.message}`)}
+  finally{r.eventBusy=false}
+}
+
+function saveGraph(){
+  localStorage.setItem("bookScannerV6",JSON.stringify({nodes,links,nextId}));
+  toast("Graph saved");
+}
+function loadGraph(){
+  const s=localStorage.getItem("bookScannerV6");if(!s){toast("No saved graph");return}
+  try{
+    const d=JSON.parse(s);stopGraph();nodes=[];links=[];values.clear();runtime.clear();
+    nextId=d.nextId||1;(d.nodes||[]).forEach(n=>addNode(n.type,n.x,n.y,n));links=d.links||[];
+    rerender();fitGraph();toast("Graph loaded • press Run when ready");
+  }catch(e){toast("Could not load graph")}
+}
+function deleteSelected(){
+  if(selectedNode==null)return;
+  nodes=nodes.filter(n=>n.id!==selectedNode);
+  links=links.filter(l=>l.fromNode!==selectedNode&&l.toNode!==selectedNode);
+  values.delete(selectedNode);runtime.delete(selectedNode);selectedNode=null;rerender();
+}
+
+const addMenu=document.getElementById("addMenu"),addSearch=document.getElementById("addSearch"),addItems=document.getElementById("addItems");
+let addPlacement={x:0,y:0};
+function openAddMenu(x,y){
+  addPlacement={x:(x-panX)/zoom,y:(y-panY)/zoom};
+  addMenu.style.left=Math.min(x,workspace.clientWidth-280)+"px";
+  addMenu.style.top=Math.min(y,workspace.clientHeight-420)+"px";
+  addMenu.style.display="block";addSearch.value="";renderAddItems("");addSearch.focus();
+}
+function renderAddItems(q){
+  addItems.innerHTML="";q=q.toLowerCase();
+  const entries=Object.entries(defs).filter(([k,d])=>(d.title+" "+d.category).toLowerCase().includes(q));
+  let last="";
+  for(const [type,d] of entries.sort((a,b)=>(a[1].category+a[1].title).localeCompare(b[1].category+b[1].title))){
+    if(d.category!==last){const c=document.createElement("div");c.className="menuCategory";c.textContent=d.category;addItems.appendChild(c);last=d.category}
+    const e=document.createElement("div");e.className="menuItem";e.textContent=d.title;
+    e.onclick=()=>{addNode(type,addPlacement.x,addPlacement.y);addMenu.style.display="none"};addItems.appendChild(e);
+  }
+}
+addSearch.addEventListener("input",()=>renderAddItems(addSearch.value));
+workspace.addEventListener("mousemove",e=>{const r=workspace.getBoundingClientRect();mousePos={x:e.clientX-r.left,y:e.clientY-r.top}});
+window.addEventListener("keydown",e=>{
+  if(e.target.closest("input,textarea,select,dialog"))return;
+  if(e.shiftKey&&e.key.toLowerCase()==="a"){
+    e.preventDefault();openAddMenu(mousePos.x,mousePos.y);
+  }
+  if(e.key==="Delete"&&document.activeElement.tagName!=="INPUT"&&document.activeElement.tagName!=="TEXTAREA")deleteSelected();
+  if(e.key==="Escape"){addMenu.style.display="none";armedOutput=null;document.querySelectorAll(".port.armed").forEach(x=>x.classList.remove("armed"))}
+});
+workspace.addEventListener("mousedown",e=>{
+  if(e.target.closest(".modal,#galleryPanel,#cameraPreview,#addMenu,#captureNotice"))return;
+  if(e.button===1||(e.button===0&&!e.target.closest(".node"))){
+    e.preventDefault();
+    const startX=e.clientX,startY=e.clientY,ox=panX,oy=panY;
+    const move=ev=>{panX=ox+ev.clientX-startX;panY=oy+ev.clientY-startY;applyPan();drawWires()};
+    const up=()=>{window.removeEventListener("mousemove",move);window.removeEventListener("mouseup",up)};
+    window.addEventListener("mousemove",move);window.addEventListener("mouseup",up);return;
+  }
+  if(!addMenu.contains(e.target)&&!e.target.closest(".node")){addMenu.style.display="none";selectNode(null)}
+});
+
+let panX=0,panY=0,zoom=1;
+function applyPan(){
+  const transform=`translate(${panX}px,${panY}px) scale(${zoom})`;
+  nodesLayer.style.transform=transform;
+  document.getElementById("zoomLabel").textContent=`${Math.round(zoom*100)}%`;
+  drawWires();
+}
+function setZoom(next){zoom=Math.max(.45,Math.min(2.2,next));applyPan()}
+workspace.addEventListener("wheel",e=>{
+  if(e.target.closest(".modal,#galleryPanel,#cameraPreview,#addMenu,#captureNotice,.node"))return;
+  e.preventDefault();const r=workspace.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  const next=Math.max(.25,Math.min(2.2,zoom*Math.exp(-e.deltaY*.0015)));
+  panX=x-(x-panX)*next/zoom;panY=y-(y-panY)*next/zoom;zoom=next;applyPan();
+},{passive:false});
+document.getElementById("zoomIn").onclick=()=>setZoom(zoom+.1);
+document.getElementById("zoomOut").onclick=()=>setZoom(zoom-.1);
+document.getElementById("zoomReset").onclick=fitGraph;
+
+/* Camera */
+let camGeneration=0,captureBusy=false,camSessions=[];
+function stopCameraPreview(){
+  camGeneration++;
+  for(const s of camSessions){clearTimeout(s.timer);s.controller?.abort();if(s.url)URL.revokeObjectURL(s.url)}
+  camSessions=[];
+}
+function showCamera(camera=0){
+  stopCameraPreview();
+  const generation=camGeneration;
+  const p=document.getElementById("cameraPreview");p.style.display="flex";
+  p.querySelectorAll("img,#cameraMessage,.liveCamera").forEach(el=>el.remove());
+  for(const id of selectedCameras(camera)){
+  const pane=document.createElement("section");pane.className="liveCamera";
+  const im=document.createElement("img"),message=document.createElement("div");im.alt=`Camera ${id+1} live preview`;message.textContent=`Camera ${id+1} · Connecting…`;pane.append(im,message);p.append(pane);
+  const session={};camSessions.push(session);
+  const refresh=async()=>{
+    if(generation!==camGeneration)return;
+    let delay=150;session.controller=new AbortController();
+    const timeout=setTimeout(()=>session.controller.abort(),6000);
+    try{
+      const response=await fetch(`/camera/frame.jpg?camera=${id}&t=${Date.now()}`,{cache:"no-store",signal:session.controller.signal});
+      if(!response.ok){const error=await response.json();throw new Error(error.error||"Preview unavailable")}
+      const blob=await response.blob();
+      if(generation!==camGeneration)return;
+      const previous=session.url;session.url=URL.createObjectURL(blob);im.src=session.url;
+      if(previous)URL.revokeObjectURL(previous);
+      message.textContent=`Camera ${id+1} · Live`;
+    }catch(e){
+      if(generation!==camGeneration)return;
+      im.removeAttribute("src");message.textContent=`Camera ${id+1} · ${e.name==="AbortError"?"Preview timed out":e.message}`;delay=1500;
+    }finally{clearTimeout(timeout)}
+    if(generation===camGeneration)session.timer=setTimeout(refresh,delay);
+  };
+  refresh();
+  }
+}
+document.getElementById("camClose").onclick=()=>{document.getElementById("cameraPreview").style.display="none";stopCameraPreview()};
+
+document.getElementById("galleryBtn").onclick=()=>{document.getElementById("galleryPanel").style.display="block";loadGallery()};
+document.getElementById("galleryRefresh").onclick=loadGallery;
+document.getElementById("galleryClose").onclick=()=>document.getElementById("galleryPanel").style.display="none";
+
+/* Terminal - local WebSocket, no external library */
+let termSocket=null;
+const termPanel=document.getElementById("terminalPanel"),termOut=document.getElementById("terminalOutput"),termInput=document.getElementById("terminalInput");
+function cleanAnsi(s){
+  return s.replace(/\x1b\[[0-?]*[ -\/]*[@-~]/g,"").replace(/\r(?!\n)/g,"\n");
+}
+function termAppend(s){termOut.textContent+=cleanAnsi(s);termOut.scrollTop=termOut.scrollHeight}
+function termConnect(){
+  if(termSocket){try{termSocket.close()}catch(e){}}
+  termAppend("\nConnecting to Pi shell...\n");
+  const scheme=location.protocol==="https:"?"wss":"ws";
+  termSocket=new WebSocket(`${scheme}://${location.host}/ws/terminal`);
+  termSocket.onopen=()=>termAppend("Connected.\n");
+  termSocket.onmessage=e=>termAppend(typeof e.data==="string"?e.data:"");
+  termSocket.onclose=()=>termAppend("\n[terminal disconnected]\n");
+  termSocket.onerror=()=>termAppend("\n[terminal error]\n");
+}
+function termSend(text){
+  if(!termSocket||termSocket.readyState!==WebSocket.OPEN){toast("Terminal is not connected");return}
+  termSocket.send(text);
+}
+document.getElementById("terminalBtn").onclick=()=>{termPanel.style.display="block";if(!termSocket||termSocket.readyState>1)termConnect();setTimeout(()=>termInput.focus(),50)};
+document.getElementById("termClose").onclick=()=>termPanel.style.display="none";
+document.getElementById("termReconnect").onclick=termConnect;
+document.getElementById("termSend").onclick=()=>{const v=termInput.value;if(v){termSend(v+"\n");termInput.value=""}};
+document.getElementById("termCtrlC").onclick=()=>termSend("\x03");
+termInput.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();document.getElementById("termSend").click()}});
+
+/* File editor */
+const filePanel=document.getElementById("filePanel"),filePath=document.getElementById("filePath"),fileEditor=document.getElementById("fileEditor");
+document.getElementById("filesBtn").onclick=()=>filePanel.style.display="block";
+document.getElementById("fileClose").onclick=()=>filePanel.style.display="none";
+document.getElementById("fileLoad").onclick=async()=>{
+  try{const d=await API.get(`/api/file/read?path=${encodeURIComponent(filePath.value)}`);fileEditor.value=d.content;toast("File loaded")}catch(e){toast(e.message)}
+};
+document.getElementById("fileSave").onclick=async()=>{
+  try{await API.post("/api/file/write",{path:filePath.value,content:fileEditor.value});toast("File saved on Pi")}catch(e){toast(e.message)}
+};
+
+/* Toolbar */
+document.getElementById("linkBtn").onclick=linkPi;
+document.getElementById("saveBtn").onclick=saveGraph;
+document.getElementById("loadBtn").onclick=loadGraph;
+document.getElementById("deleteBtn").onclick=deleteSelected;
+document.getElementById("stop").onclick=()=>{stopGraph();toast("Node execution stopped")};
+document.getElementById("play").onclick=()=>{
+  if(!validatePins()){toast("Fix GPIO conflicts first");return}
+  running=true;
+  document.getElementById("runState").textContent="● Running";
+  nodes.filter(n=>n.type==="start").forEach(n=>fireEvent(n.id,"Trigger"));
+  toast("Sequence running");
+};
+
+/* Default graph */
+addNode("start",70,40);
+addNode("monitor",370,40);
+addNode("ds18b20",70,270);
+addNode("number",370,360);
+addNode("compare",650,275);
+addNode("camera",950,270);
+links.push({fromNode:3,fromPort:"°F",toNode:5,toPort:"A",type:"number"});
+links.push({fromNode:4,fromPort:"Value",toNode:5,toPort:"B",type:"number"});
+links.push({fromNode:5,fromPort:"True",toNode:6,toPort:"Trigger",type:"event"});
+drawWires();
+
+setInterval(pollNodes,100);
+setInterval(validatePins,1000);
+setInterval(drawWires,250);
+window.addEventListener("resize",drawWires);
+linkPi();
+</script>
+</body>
+</html>
